@@ -37,6 +37,38 @@ function createTransporterInstance({ host, port, user, pass }) {
   });
 }
 
+async function sendResendEmail(mailOptions, apiKey, fetchImpl = fetch) {
+  const response = await fetchImpl('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: mailOptions.from,
+      to: [mailOptions.to],
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+      attachments: (mailOptions.attachments || []).map((attachment) => ({
+        filename: attachment.filename,
+        content: Buffer.isBuffer(attachment.content)
+          ? attachment.content.toString('base64')
+          : attachment.content
+      }))
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = result.message || result.error || `HTTP ${response.status}`;
+    throw new Error(`Resend API: ${message}`);
+  }
+
+  return { messageId: result.id };
+}
+
 // Build SMTP Transporter
 async function getTransporter() {
   const host = process.env.SMTP_HOST || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_host'")?.value;
@@ -251,8 +283,11 @@ async function sendTicketEmail(registrationId, options = {}) {
   const fromAddress = process.env.SMTP_FROM || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_from'")?.value || 'biletat@uni-pr.edu';
 
   try {
-    const transporter = await getTransporter();
-
+    const provider = process.env.EMAIL_PROVIDER
+      || queryOne("SELECT value FROM system_settings WHERE key = 'email_provider'")?.value
+      || 'smtp';
+    const resendApiKey = process.env.RESEND_API_KEY
+      || queryOne("SELECT value FROM system_settings WHERE key = 'resend_api_key'")?.value;
     const mailOptions = {
       from: `"Fakulteti i Mjekësisë - UP" <${fromAddress}>`,
       to: reg.email,
@@ -268,7 +303,17 @@ async function sendTicketEmail(registrationId, options = {}) {
       ]
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    let info;
+    if (provider === 'resend') {
+      if (!resendApiKey) {
+        throw new Error('Çelësi Resend API mungon. Vendoseni te cilësimet e emailit.');
+      }
+      info = await sendResendEmail(mailOptions, resendApiKey);
+    } else {
+      const transporter = await getTransporter();
+      info = await transporter.sendMail(mailOptions);
+    }
+
     console.log(`✓ Email delivered successfully to ${reg.email}. Message ID: ${info.messageId}`);
 
     // Update database status
@@ -325,6 +370,7 @@ async function retryFailedEmails(eventId, baseUrl) {
 module.exports = {
   getTransporter,
   createTransporterInstance,
+  sendResendEmail,
   sendTicketEmail,
   retryFailedEmails,
   buildHtmlEmail,

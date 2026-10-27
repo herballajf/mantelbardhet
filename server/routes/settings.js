@@ -11,12 +11,15 @@ router.get('/', authenticate, requireAdmin, (req, res) => {
   const settings = {};
   for (const r of rows) {
     // Mask password
-    if (r.key === 'smtp_pass' && r.value) {
+    if (['smtp_pass', 'resend_api_key'].includes(r.key) && r.value) {
       settings[r.key] = '••••••••••••';
     } else {
       settings[r.key] = r.value;
     }
   }
+  if (process.env.RESEND_API_KEY) settings.resend_api_key = '••••••••••••';
+  if (process.env.EMAIL_PROVIDER) settings.email_provider = process.env.EMAIL_PROVIDER;
+  if (process.env.SMTP_FROM) settings.smtp_from = process.env.SMTP_FROM;
 
   // Count active registrations & audit logs
   const totalRegs = queryOne('SELECT COUNT(*) as count FROM registrations')?.count || 0;
@@ -36,9 +39,19 @@ router.get('/', authenticate, requireAdmin, (req, res) => {
 
 // PUT /api/settings (Update settings)
 router.put('/', authenticate, requireAdmin, (req, res) => {
-  const { smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, data_retention_days } = req.body;
+  const { email_provider, resend_api_key, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, data_retention_days } = req.body;
+
+  if (email_provider !== undefined && !['smtp', 'resend'].includes(email_provider)) {
+    return res.status(400).json({ error: 'Ofruesi i emailit nuk është i vlefshëm.' });
+  }
 
   transaction(() => {
+    if (email_provider !== undefined && !process.env.EMAIL_PROVIDER) {
+      execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('email_provider', ?, datetime('now'))", [email_provider]);
+    }
+    if (resend_api_key !== undefined && resend_api_key !== '••••••••••••' && resend_api_key.trim() !== '') {
+      execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('resend_api_key', ?, datetime('now'))", [resend_api_key.trim()]);
+    }
     if (smtp_host !== undefined) {
       execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('smtp_host', ?, datetime('now'))", [smtp_host.trim()]);
     }
@@ -64,18 +77,18 @@ router.put('/', authenticate, requireAdmin, (req, res) => {
     userId: req.user.id,
     action: 'UPDATE_SYSTEM_SETTINGS',
     entityType: 'settings',
-    details: { smtp_host, smtp_port, smtp_from, data_retention_days },
+    details: { email_provider, smtp_host, smtp_port, smtp_from, data_retention_days },
     ipAddress: req.ip
   });
 
   res.json({ success: true, message: 'Cilësimet e sistemit u ruajtën me sukses.' });
 });
 
-const { createTransporterInstance } = require('../services/emailService');
+const { createTransporterInstance, sendResendEmail } = require('../services/emailService');
 
 // POST /api/settings/test-email (Send real test email to verify SMTP credentials)
 router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
-  const { test_email, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
+  const { test_email, email_provider, resend_api_key, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
   if (!test_email) {
     return res.status(400).json({ error: 'Ju lutemi vendosni email adresën pranuese për testim.' });
   }
@@ -88,7 +101,51 @@ router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
   if (!pass || pass === '••••••••••••') {
     pass = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_pass'")?.value;
   }
-  const from = smtp_from || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_from'")?.value || user || 'biletat@uni-pr.edu';
+  const from = process.env.SMTP_FROM || smtp_from || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_from'")?.value || user || 'biletat@uni-pr.edu';
+  const provider = process.env.EMAIL_PROVIDER
+    || email_provider
+    || queryOne("SELECT value FROM system_settings WHERE key = 'email_provider'")?.value
+    || 'smtp';
+
+  if (provider === 'resend') {
+    const apiKey = process.env.RESEND_API_KEY
+      || (resend_api_key && resend_api_key !== '••••••••••••' ? resend_api_key : null)
+      || queryOne("SELECT value FROM system_settings WHERE key = 'resend_api_key'")?.value;
+    if (!apiKey || !from) {
+      return res.status(400).json({
+        error: 'Konfigurimi Resend është i paplotë. Plotësoni çelësin API dhe adresën dërguese të verifikuar.'
+      });
+    }
+
+    try {
+      const info = await sendResendEmail({
+        from: `"Fakulteti i Mjekësisë - Test" <${from}>`,
+        to: test_email,
+        subject: 'Testim i Suksesshëm i Emailit – Universiteti i Prishtinës',
+        text: 'Ky është një email testues për të konfirmuar konfigurimin e Resend.',
+        html: '<p>Ky është një email testues për të konfirmuar konfigurimin e Resend.</p>'
+      }, apiKey);
+
+      logAudit({
+        userId: req.user.id,
+        action: 'EMAIL_API_TEST',
+        entityType: 'settings',
+        details: { provider: 'resend', recipient: test_email, messageId: info.messageId },
+        ipAddress: req.ip
+      });
+
+      return res.json({
+        success: true,
+        message: `Emaili testues u dërgua me sukses te ${test_email}!`,
+        messageId: info.messageId
+      });
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        error: `Dështoi dërgimi përmes Resend: ${err.message}`
+      });
+    }
+  }
 
   if (!host || !user || !pass) {
     return res.status(400).json({

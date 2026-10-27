@@ -6,7 +6,7 @@ const { initDb, execute, queryOne, queryAll } = require('../server/db');
 const { seedDatabase } = require('../server/db/seed');
 const { processSubmission } = require('../server/services/webhookService');
 const { generateTicketPdf } = require('../server/services/pdfGenerator');
-const { sendTicketEmail, retryFailedEmails, createTransporterInstance } = require('../server/services/emailService');
+const { sendTicketEmail, retryFailedEmails, createTransporterInstance, sendResendEmail } = require('../server/services/emailService');
 const { createApp } = require('../server/app');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../server/middleware/auth');
@@ -25,7 +25,7 @@ async function runTestSuite() {
   assert.ok(event, 'Event must exist in DB');
 
   let testsPassed = 0;
-  const totalTests = 16;
+  const totalTests = 17;
 
   // --------------------------------------------------------------------------
   // Criterion 0: Gmail SMTP honors the configured port and TLS mode
@@ -52,6 +52,31 @@ async function runTestSuite() {
   console.log('  ✓ Passed: Gmail SMTP uses the selected host, port, and TLS mode\n');
   testsPassed++;
 
+  // --------------------------------------------------------------------------
+  // Criterion 0b: Resend API sends HTTPS JSON with base64 attachments
+  // --------------------------------------------------------------------------
+  console.log('Test 0b: Resend API sends HTTPS JSON with base64 attachments...');
+  let resendRequest;
+  const resendApiResult = await sendResendEmail({
+    from: 'Tickets <tickets@example.com>',
+    to: 'student@example.com',
+    subject: 'Test ticket',
+    text: 'Ticket attached',
+    html: '<p>Ticket attached</p>',
+    attachments: [{ filename: 'ticket.pdf', content: Buffer.from('%PDF-test') }]
+  }, 're_test_key', async (url, options) => {
+    resendRequest = { url, options };
+    return { ok: true, status: 200, json: async () => ({ id: 'resend-test-id' }) };
+  });
+  assert.strictEqual(resendRequest.url, 'https://api.resend.com/emails');
+  assert.strictEqual(resendRequest.options.method, 'POST');
+  assert.strictEqual(resendRequest.options.headers.Authorization, 'Bearer re_test_key');
+  const resendPayload = JSON.parse(resendRequest.options.body);
+  assert.deepStrictEqual(resendPayload.to, ['student@example.com']);
+  assert.strictEqual(resendPayload.attachments[0].content, Buffer.from('%PDF-test').toString('base64'));
+  assert.strictEqual(resendApiResult.messageId, 'resend-test-id');
+  console.log('  ✓ Passed: Resend HTTPS request includes authorization and encoded attachment\n');
+  testsPassed++;
   // --------------------------------------------------------------------------
   // Criterion 1: A new Google Forms submission generates exactly one ticket
   // --------------------------------------------------------------------------
@@ -138,9 +163,30 @@ async function runTestSuite() {
   // Criterion 5: Ticket is emailed to the correct recipient
   // --------------------------------------------------------------------------
   console.log('Test 5: Ticket is emailed to the correct recipient...');
-  const emailRes = await sendTicketEmail(savedReg1.id, { baseUrl: 'http://localhost:3000' });
+  const previousProvider = process.env.EMAIL_PROVIDER;
+  const previousApiKey = process.env.RESEND_API_KEY;
+  const originalFetch = global.fetch;
+  let ticketEmailRequest;
+  process.env.EMAIL_PROVIDER = 'resend';
+  process.env.RESEND_API_KEY = 're_test_key';
+  global.fetch = async (url, options) => {
+    ticketEmailRequest = { url, options };
+    return { ok: true, status: 200, json: async () => ({ id: 'resend-ticket-id' }) };
+  };
+  let emailRes;
+  try {
+    emailRes = await sendTicketEmail(savedReg1.id, { baseUrl: 'http://localhost:3000' });
+  } finally {
+    global.fetch = originalFetch;
+    if (previousProvider === undefined) delete process.env.EMAIL_PROVIDER;
+    else process.env.EMAIL_PROVIDER = previousProvider;
+    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = previousApiKey;
+  }
   assert.strictEqual(emailRes.success, true);
   assert.strictEqual(emailRes.email, 'vjosa.test@student.uni-pr.edu');
+  assert.strictEqual(ticketEmailRequest.url, 'https://api.resend.com/emails');
+  assert.strictEqual(JSON.parse(ticketEmailRequest.options.body).attachments[0].filename, `Bileta-Zyrtare-${savedReg1.ticket_number}.pdf`);
   const updatedEmailReg = queryOne('SELECT email_status, email_sent_at FROM registrations WHERE id = ?', [savedReg1.id]);
   assert.strictEqual(updatedEmailReg.email_status, 'sent');
   assert.ok(updatedEmailReg.email_sent_at !== null);

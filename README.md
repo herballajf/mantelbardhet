@@ -15,7 +15,7 @@ Zhvilluar posaçërisht për ceremonitë zyrtare të Fakultetit të Mjekësisë,
   2. **Format Digjital (Mobile Pass):** Format kompakt (380x620 pt) i optimizuar posaçërisht për ekranet e telefonave celularë dhe skanim të shpejtë në derë.
 - **Menaxhimi Dinamik i Personave Shoqërues:** Mbështet pa asnjë thyerje 0, 1, 2, 3, 4 ose më shumë mysafirë (prindër, mentorë). Në rast të listave të gjata të mysafirëve, dokumenti zgjerohet automatikisht në faqe shtesë me kornizë zyrtare pa humbur asnjë emër.
 - **Mbrojtje e Rreptë nga Dublikatat (Idempotency):** Çdo dërgim nga Google Forms identifikohet në mënyrë unike; ripërsëritjet nuk krijojnë kurrë bileta të dyfishta.
-- **Dërgim Automatik i Emailit me Nodemailer:** Email zyrtar në gjuhën shqipe me biletën PDF të bashkangjitur, mbështetje për riprovim (retry) dhe dërgim manual.
+- **Dërgim Automatik i Emailit:** Email zyrtar në gjuhën shqipe me biletën PDF të bashkangjitur, mbështetje për riprovim (retry), dërgim manual dhe Resend API për hostet që bllokojnë SMTP.
 - **Skaneri i Check-in për Stafin:** Ndërfaqe me kamerë të integruar (HTML5 QR Code) dhe kërkim manual të kodit; sinjale vizuale (e gjelbër / e kuqe), shfaqje e numrit të lejuar të mysafirëve dhe parandalim i hyrjes së dyfishtë.
 - **Privatësi e Plotë (GDPR):** Skanimi publik i QR kodit shfaq VETËM vlefshmërinë e biletës dhe emrin e studentit, duke mos ekspozuar kurrë numrin e telefonit, emailin apo emrat e mysafirëve.
 - **Menaxhim i Shumëfishtë i Ngjarjeve (Multi-Event):** Çdo aktivitet ka rregullat e veta të numërimit, dizajnit të biletës, shabllonit të emailit dhe webhook-ut.
@@ -45,10 +45,21 @@ npm start
 ```
 Serveri do të niset në: `http://localhost:3000`
 
-### 5. Ekzekutimi i Testeve të Automatizuara (15 Kriteret e Pranimit)
+### 5. Ekzekutimi i Testeve të Automatizuara
 ```bash
 npm test
 ```
+
+### Dërgimi i emailit përmes Resend API
+
+Nëse hosti i aplikacionit bllokon lidhjet SMTP dalëse, mund të përdorni [Resend](https://resend.com) përmes HTTPS:
+
+1. Verifikoni domenin dërgues në Resend dhe vendosni rekordet DNS që kërkon Resend.
+2. Krijoni një API key në Resend.
+3. Te **Settings → Konfigurimi i Dërgimit të Emailit**, zgjidhni **Resend API (HTTPS)**, vendosni API key dhe adresën nga domeni i verifikuar, pastaj ruani.
+4. Dërgoni një email testues nga i njëjti panel.
+
+API key mund të vendoset edhe si `RESEND_API_KEY` dhe `EMAIL_PROVIDER=resend` në mjedisin e serverit. Mos e ruani API key në Git.
 
 ---
 

@@ -16,6 +16,8 @@ import { Modal, ConfirmDialog } from '../components/Modal';
 
 export function Settings() {
   const [settings, setSettings] = useState({
+    email_provider: 'smtp',
+    resend_api_key: '',
     smtp_host: 'smtp.gmail.com',
     smtp_port: '587',
     smtp_user: '',
@@ -98,6 +100,8 @@ export function Settings() {
     try {
       const res = await api.post('/settings/test-email', {
         test_email: testEmail,
+        email_provider: settings.email_provider,
+        resend_api_key: settings.resend_api_key,
         smtp_host: settings.smtp_host,
         smtp_port: settings.smtp_port,
         smtp_user: settings.smtp_user,
@@ -148,7 +152,7 @@ export function Settings() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
-        <h2 className="text-xl font-bold text-[#0B1E36]">Konfigurimi i Sistemit & SMTP</h2>
+        <h2 className="text-xl font-bold text-[#0B1E36]">Konfigurimi i Sistemit & Emailit</h2>
         <p className="text-xs text-slate-500">
           Menaxhoni dërguesin e emailave zyrtarë, llogaritë e stafit dhe politikat e privatësisë
         </p>
@@ -162,19 +166,63 @@ export function Settings() {
         </div>
       )}
 
-      {/* SMTP Email Configuration Card */}
+      {/* Email Configuration Card */}
       <form onSubmit={handleSaveSettings} className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-5 text-xs">
         <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100">
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
             <Mail className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-[#0B1E36]">Konfigurimi i Serverit të Emailit (SMTP)</h3>
-            <p className="text-slate-500 text-[11px]">Serveri nga i cili dërgohen biletat PDF te studentët</p>
+            <h3 className="text-sm font-bold text-[#0B1E36]">Konfigurimi i Dërgimit të Emailit</h3>
+            <p className="text-slate-500 text-[11px]">Zgjidhni SMTP ose Resend API për dërgimin e biletave PDF</p>
           </div>
         </div>
 
+        <div>
+          <label className="block font-semibold text-slate-700 mb-1">Mënyra e dërgimit</label>
+          <select
+            value={settings.email_provider || 'smtp'}
+            onChange={(e) => setSettings({ ...settings, email_provider: e.target.value })}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0B1E36]"
+          >
+            <option value="smtp">SMTP</option>
+            <option value="resend">Resend API (HTTPS)</option>
+          </select>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {settings.email_provider === 'resend' ? (
+            <div className="md:col-span-2 space-y-3">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Resend API Key</label>
+                <input
+                  type="password"
+                  value={settings.resend_api_key || ''}
+                  onChange={(e) => setSettings({ ...settings, resend_api_key: e.target.value })}
+                  placeholder="re_..."
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0B1E36]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Çelësi ruhet në server dhe nuk shfaqet pas ruajtjes. Krijojeni në llogarinë Resend.
+                </p>
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Adresa dërguese e verifikuar</label>
+                <input
+                  type="text"
+                  value={settings.smtp_from || ''}
+                  onChange={(e) => setSettings({ ...settings, smtp_from: e.target.value })}
+                  placeholder="biletat@domaini-juaj.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0B1E36]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Domeni i kësaj adrese duhet të verifikohet në Resend para dërgimit.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Hosti SMTP</label>
             <input
@@ -225,6 +273,8 @@ export function Settings() {
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0B1E36]"
             />
           </div>
+            </>
+          )}
         </div>
 
         <div className="flex items-center justify-end pt-3 border-t border-slate-100">
@@ -233,16 +283,16 @@ export function Settings() {
             disabled={saving}
             className="px-5 py-2 font-bold text-white bg-[#0B1E36] hover:bg-[#142D50] rounded-lg transition-colors shadow-xs"
           >
-            {saving ? 'Duke ruajtur...' : 'Ruaj Konfigurimin SMTP'}
+            {saving ? 'Duke ruajtur...' : 'Ruaj Konfigurimin e Emailit'}
           </button>
         </div>
       </form>
 
       {/* SMTP Test Sender */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4 text-xs">
-        <h4 className="text-sm font-bold text-[#0B1E36]">Testo Lidhjen SMTP</h4>
+        <h4 className="text-sm font-bold text-[#0B1E36]">Testo Dërgimin e Emailit</h4>
         <p className="text-slate-500">
-          Dërgoni një email testues në adresën tuaj për të verifikuar nëse kredencialet e serverit janë të sakta
+          Dërgoni një email testues në adresën tuaj për të verifikuar konfigurimin e {settings.email_provider === 'resend' ? 'Resend API' : 'SMTP'}
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3">
