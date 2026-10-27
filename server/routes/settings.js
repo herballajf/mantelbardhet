@@ -71,35 +71,33 @@ router.put('/', authenticate, requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Cilësimet e sistemit u ruajtën me sukses.' });
 });
 
+const { createTransporterInstance } = require('../services/emailService');
+
 // POST /api/settings/test-email (Send real test email to verify SMTP credentials)
 router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
-  const { test_email } = req.body;
+  const { test_email, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from } = req.body;
   if (!test_email) {
     return res.status(400).json({ error: 'Ju lutemi vendosni email adresën pranuese për testim.' });
   }
 
-  const host = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_host'")?.value;
-  const port = parseInt(queryOne("SELECT value FROM system_settings WHERE key = 'smtp_port'")?.value || '587', 10);
-  const user = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_user'")?.value;
-  const pass = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_pass'")?.value;
-  const from = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_from'")?.value || 'biletat@uni-pr.edu';
+  // Use body values if provided, otherwise fetch from DB
+  const host = smtp_host || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_host'")?.value;
+  const port = smtp_port || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_port'")?.value || '587';
+  const user = smtp_user || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_user'")?.value;
+  let pass = smtp_pass;
+  if (!pass || pass === '••••••••••••') {
+    pass = queryOne("SELECT value FROM system_settings WHERE key = 'smtp_pass'")?.value;
+  }
+  const from = smtp_from || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_from'")?.value || user || 'biletat@uni-pr.edu';
 
   if (!host || !user || !pass) {
     return res.status(400).json({
-      error: 'Konfigurimi SMTP është i paplotë. Vendosni Host, User dhe Fjalëkalimin para testimit.'
+      error: 'Konfigurimi SMTP është i paplotë. Plotësoni Hosti, Përdoruesi dhe Fjalëkalimi para testimit.'
     });
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false }
-    });
-
-    await transporter.verify();
+    const transporter = createTransporterInstance({ host, port, user, pass });
 
     const info = await transporter.sendMail({
       from: `"Fakulteti i Mjekësisë - Test" <${from}>`,
@@ -134,9 +132,16 @@ router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
       messageId: info.messageId
     });
   } catch (err) {
+    let friendlyError = err.message;
+    if (err.code === 'EAUTH' || err.message.includes('Username and Password not accepted')) {
+      friendlyError = 'Google refuzoi fjalëkalimin. Sigurohuni që keni përdorur një "App Password" me 16 karaktere nga myaccount.google.com/apppasswords dhe jo fjalëkalimin e zakonshëm.';
+    } else if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT') {
+      friendlyError = 'Lidhja me serverin e emailit skadoi (Timeout). Nëse jeni në cloud, provoni portin 465 në vend të 587.';
+    }
+
     res.status(500).json({
       success: false,
-      error: `Dështoi lidhja SMTP: ${err.message}`
+      error: `Dështoi lidhja SMTP: ${friendlyError}`
     });
   }
 });

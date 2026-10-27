@@ -6,22 +6,44 @@ const { generateTicketPdf } = require('./pdfGenerator');
 
 let testTransporter = null;
 
+function createTransporterInstance({ host, port, user, pass }) {
+  const cleanPass = (pass || '').trim().replace(/\s+/g, '');
+  const cleanUser = (user || '').trim();
+  const cleanHost = (host || '').trim();
+  const isGmail = cleanHost.toLowerCase().includes('gmail') || cleanUser.toLowerCase().endsWith('@gmail.com');
+
+  if (isGmail) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: cleanUser, pass: cleanPass },
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000
+    });
+  }
+
+  const p = parseInt(port || '587', 10);
+  return nodemailer.createTransport({
+    host: cleanHost,
+    port: p,
+    secure: p === 465,
+    auth: { user: cleanUser, pass: cleanPass },
+    tls: { rejectUnauthorized: false },
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 10000
+  });
+}
+
 // Build SMTP Transporter
 async function getTransporter() {
   const host = process.env.SMTP_HOST || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_host'")?.value;
   const port = parseInt(process.env.SMTP_PORT || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_port'")?.value || '587', 10);
   const user = process.env.SMTP_USER || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_user'")?.value;
   const pass = process.env.SMTP_PASS || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_pass'")?.value;
-  const secure = port === 465;
 
   if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false }
-    });
+    return createTransporterInstance({ host, port, user, pass });
   }
 
   // Fallback to simulated/test transporter for development or when unconfigured
@@ -300,6 +322,7 @@ async function retryFailedEmails(eventId, baseUrl) {
 
 module.exports = {
   getTransporter,
+  createTransporterInstance,
   sendTicketEmail,
   retryFailedEmails,
   buildHtmlEmail,

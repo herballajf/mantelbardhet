@@ -96,7 +96,14 @@ export function Settings() {
     setTestLoading(true);
     setTestResult(null);
     try {
-      const res = await api.post('/settings/test-email', { test_email: testEmail });
+      const res = await api.post('/settings/test-email', {
+        test_email: testEmail,
+        smtp_host: settings.smtp_host,
+        smtp_port: settings.smtp_port,
+        smtp_user: settings.smtp_user,
+        smtp_pass: settings.smtp_pass,
+        smtp_from: settings.smtp_from
+      });
       setTestResult({ success: true, text: res.message });
     } catch (err) {
       setTestResult({ success: false, text: err.message });
