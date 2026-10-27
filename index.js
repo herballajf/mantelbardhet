@@ -9,7 +9,7 @@ try {
 
   const app = createApp();
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log('================================================================');
     console.log('🏛  UNIVERSITETI I PRISHTINËS - FAKULTETI I MJEKËSISË');
     console.log('🎟  Sistemi Automatik i Biletave dhe Regjistrimeve Digjitale');

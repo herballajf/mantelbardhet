@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "render-build": "npm install && vite build",
     "start": "node index.js",
     "test": "node tests/workflow.test.js"
   },
@@ -15,6 +19,9 @@
   "type": "commonjs",
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.6.2",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.6",
@@ -26,15 +33,10 @@
     "multer": "^2.5.0",
     "nodemailer": "^10.2.1",
     "pdf-lib": "^1.17.1",
+    "postcss": "^8.5.32",
     "qrcode": "^1.5.4",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "@vitejs/plugin-react": "^6.1.2",
-    "autoprefixer": "^10.6.2",
-    "postcss": "^8.5.32",
+    "react-dom": "^19.3.1",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5"
   }
