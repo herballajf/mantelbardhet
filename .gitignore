@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data.sqlite
+data.sqlite-wal
+data.sqlite-shm
+.env
+uploads/tickets/*.pdf
+uploads/logos/*
+npm-debug.log*
+.DS_Store
