@@ -6,7 +6,7 @@ const { initDb, execute, queryOne, queryAll } = require('../server/db');
 const { seedDatabase } = require('../server/db/seed');
 const { processSubmission } = require('../server/services/webhookService');
 const { generateTicketPdf } = require('../server/services/pdfGenerator');
-const { sendTicketEmail, retryFailedEmails } = require('../server/services/emailService');
+const { sendTicketEmail, retryFailedEmails, createTransporterInstance } = require('../server/services/emailService');
 const { createApp } = require('../server/app');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../server/middleware/auth');
@@ -25,7 +25,32 @@ async function runTestSuite() {
   assert.ok(event, 'Event must exist in DB');
 
   let testsPassed = 0;
-  const totalTests = 15;
+  const totalTests = 16;
+
+  // --------------------------------------------------------------------------
+  // Criterion 0: Gmail SMTP honors the configured port and TLS mode
+  // --------------------------------------------------------------------------
+  console.log('Test 0: Gmail SMTP honors the configured port and TLS mode...');
+  const gmail465 = createTransporterInstance({
+    host: 'smtp.gmail.com',
+    port: '465',
+    user: 'test@gmail.com',
+    pass: 'test-app-password'
+  });
+  assert.strictEqual(gmail465.options.host, 'smtp.gmail.com');
+  assert.strictEqual(gmail465.options.port, 465);
+  assert.strictEqual(gmail465.options.secure, true);
+
+  const gmail587 = createTransporterInstance({
+    host: 'smtp.gmail.com',
+    port: '587',
+    user: 'test@gmail.com',
+    pass: 'test-app-password'
+  });
+  assert.strictEqual(gmail587.options.port, 587);
+  assert.strictEqual(gmail587.options.secure, false);
+  console.log('  ✓ Passed: Gmail SMTP uses the selected host, port, and TLS mode\n');
+  testsPassed++;
 
   // --------------------------------------------------------------------------
   // Criterion 1: A new Google Forms submission generates exactly one ticket

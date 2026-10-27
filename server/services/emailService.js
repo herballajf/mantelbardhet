@@ -11,10 +11,13 @@ function createTransporterInstance({ host, port, user, pass }) {
   const cleanUser = (user || '').trim();
   const cleanHost = (host || '').trim();
   const isGmail = cleanHost.toLowerCase().includes('gmail') || cleanUser.toLowerCase().endsWith('@gmail.com');
+  const p = parseInt(port || '587', 10);
 
   if (isGmail) {
     return nodemailer.createTransport({
-      service: 'gmail',
+      host: cleanHost || 'smtp.gmail.com',
+      port: p,
+      secure: p === 465,
       auth: { user: cleanUser, pass: cleanPass },
       connectionTimeout: 8000,
       greetingTimeout: 8000,
@@ -22,7 +25,6 @@ function createTransporterInstance({ host, port, user, pass }) {
     });
   }
 
-  const p = parseInt(port || '587', 10);
   return nodemailer.createTransport({
     host: cleanHost,
     port: p,

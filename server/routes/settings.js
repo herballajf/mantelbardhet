@@ -135,8 +135,8 @@ router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
     let friendlyError = err.message;
     if (err.code === 'EAUTH' || err.message.includes('Username and Password not accepted')) {
       friendlyError = 'Google refuzoi fjalëkalimin. Sigurohuni që keni përdorur një "App Password" me 16 karaktere nga myaccount.google.com/apppasswords dhe jo fjalëkalimin e zakonshëm.';
-    } else if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT') {
-      friendlyError = 'Lidhja me serverin e emailit skadoi (Timeout). Nëse jeni në cloud, provoni portin 465 në vend të 587.';
+    } else if (['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'ECONNECTION', 'ECONNREFUSED', 'EHOSTUNREACH'].includes(err.code)) {
+      friendlyError = `Serveri nuk mund të lidhet me ${host}:${port}. Kontrolloni hostin dhe portin; për Gmail provoni portin 465 (SSL). Nëse jeni në cloud dhe timeout vazhdon, ofruesi mund të bllokojë lidhjet SMTP dalëse.`;
     }
 
     res.status(500).json({
