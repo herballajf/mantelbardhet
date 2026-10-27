@@ -73,6 +73,33 @@ Render Free bllokon portet SMTP `25`, `465` dhe `587`. Nëse doni të përdorni 
 
 Mos e ndani URL-në e tunelit bashkë me sekretin. Tuneli Quick Tunnel mund të japë URL të re pas ristartimit; në atë rast përditësoni `EMAIL_RELAY_URL` në Render. Ruani kredencialet SMTP në `.env` dhe mos e bëni commit atë skedar.
 
+### Ruajtja e të dhënave në Render (pa humbje pas deploy / GitHub migration)
+
+`data.sqlite` është një bazë lokale e skedarëve. Në Render, skedat e aplikacionit nuk janë të qëndrueshme pas redeploy-it, restartit ose migrimit të repo-it në GitHub. Kjo do të thotë që nëse vazhdoni me SQLite në prodhim, ngjarjet dhe regjistrimet e krijuara rishtas mund të humbasin.
+
+Më e sigurta dhe më e lehtë për një hostim falas është një bazë e jashtme, për shembull:
+- **Render Postgres Free** (më e rekomanduar për këtë projekt)
+- **Neon Free**
+- **Supabase Free**
+
+Shënim i rëndësishëm: **Render nuk ofron MySQL falas për prodhim të vazhdueshëm**; opsioni i saktë i lirë është PostgreSQL. Nëse ju duhet një variant me MySQL, duhet të përdorni një shërbim tjetër (p.sh. Railway, PlanetScale ose Supabase), por për këtë projekt PostgreSQL është alternativa më e thjeshtë dhe më stabile.
+
+#### Çfarë të vendosni në Render
+
+1. Krijoni një bazë PostgreSQL në Render dhe kopjoni connection string.
+2. Në panelin e Render, vendosni variablat e mjedisit:
+
+```bash
+DATABASE_URL=postgres://<user>:<password>@<host>:5432/<database_name>
+JWT_SECRET=vendosni_secret_te_rastesishem
+PORT=3000
+```
+
+3. Mos i lini `DATABASE_PATH` të vendosur në prodhim, përveçse në test lokal.
+4. Mbani aplikacionin dhe bazën e të dhënave të ndara; në këtë mënyrë evenet, biletat dhe audit log-et nuk do të fshihen pas çdo migrimi ose redeploy-i në GitHub.
+
+Nëse doni një demo me kohë të shkurtër (p.sh. 5 ditë), Render Postgres Free ose Neon Free është e mjaftueshme. Për një testim të shpejtë, kjo është mënyra e duhur, pa e varur aplikacionin tek SQLite lokal i serverit.
+
 ---
 
 ## 🔐 Kredencialet e Paracaktuara të Qasjes
