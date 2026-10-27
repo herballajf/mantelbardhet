@@ -41,7 +41,7 @@ router.get('/', authenticate, requireAdmin, (req, res) => {
 router.put('/', authenticate, requireAdmin, (req, res) => {
   const { email_provider, resend_api_key, smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, data_retention_days } = req.body;
 
-  if (email_provider !== undefined && !['smtp', 'resend'].includes(email_provider)) {
+  if (email_provider !== undefined && !['smtp', 'resend', 'local_relay'].includes(email_provider)) {
     return res.status(400).json({ error: 'Ofruesi i emailit nuk është i vlefshëm.' });
   }
 
@@ -84,7 +84,11 @@ router.put('/', authenticate, requireAdmin, (req, res) => {
   res.json({ success: true, message: 'Cilësimet e sistemit u ruajtën me sukses.' });
 });
 
-const { createTransporterInstance, sendResendEmail } = require('../services/emailService');
+const {
+  createTransporterInstance,
+  sendResendEmail,
+  sendLocalRelayEmail
+} = require('../services/emailService');
 
 // POST /api/settings/test-email (Send real test email to verify SMTP credentials)
 router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
@@ -106,6 +110,37 @@ router.post('/test-email', authenticate, requireAdmin, async (req, res) => {
     || email_provider
     || queryOne("SELECT value FROM system_settings WHERE key = 'email_provider'")?.value
     || 'smtp';
+
+  if (provider === 'local_relay') {
+    try {
+      const info = await sendLocalRelayEmail({
+        from: `"Fakulteti i Mjekësisë - Test" <${from}>`,
+        to: test_email,
+        subject: 'Testim i Suksesshëm i Emailit – Universiteti i Prishtinës',
+        text: 'Ky është një email testues për të konfirmuar SMTP relay lokal.',
+        html: '<p>Ky është një email testues për të konfirmuar SMTP relay lokal.</p>'
+      });
+
+      logAudit({
+        userId: req.user.id,
+        action: 'EMAIL_RELAY_TEST',
+        entityType: 'settings',
+        details: { provider: 'local_relay', recipient: test_email, messageId: info.messageId },
+        ipAddress: req.ip
+      });
+
+      return res.json({
+        success: true,
+        message: `Emaili testues u dërgua me sukses te ${test_email}!`,
+        messageId: info.messageId
+      });
+    } catch (err) {
+      return res.status(502).json({
+        success: false,
+        error: `Dështoi SMTP relay lokal: ${err.message}`
+      });
+    }
+  }
 
   if (provider === 'resend') {
     const apiKey = process.env.RESEND_API_KEY

@@ -6,7 +6,14 @@ const { initDb, execute, queryOne, queryAll } = require('../server/db');
 const { seedDatabase } = require('../server/db/seed');
 const { processSubmission } = require('../server/services/webhookService');
 const { generateTicketPdf } = require('../server/services/pdfGenerator');
-const { sendTicketEmail, retryFailedEmails, createTransporterInstance, sendResendEmail } = require('../server/services/emailService');
+const {
+  sendTicketEmail,
+  retryFailedEmails,
+  createTransporterInstance,
+  sendResendEmail,
+  sendLocalRelayEmail
+} = require('../server/services/emailService');
+const { createEmailRelayApp } = require('../server/emailRelay');
 const { createApp } = require('../server/app');
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../server/middleware/auth');
@@ -25,7 +32,7 @@ async function runTestSuite() {
   assert.ok(event, 'Event must exist in DB');
 
   let testsPassed = 0;
-  const totalTests = 17;
+  const totalTests = 19;
 
   // --------------------------------------------------------------------------
   // Criterion 0: Gmail SMTP honors the configured port and TLS mode
@@ -77,6 +84,86 @@ async function runTestSuite() {
   assert.strictEqual(resendApiResult.messageId, 'resend-test-id');
   console.log('  ✓ Passed: Resend HTTPS request includes authorization and encoded attachment\n');
   testsPassed++;
+
+  // --------------------------------------------------------------------------
+  // Criterion 0c: Local relay client sends HTTPS with a shared secret
+  // --------------------------------------------------------------------------
+  console.log('Test 0c: Local SMTP relay client sends an authenticated HTTPS request...');
+  let relayRequest;
+  const relayClientResult = await sendLocalRelayEmail({
+    from: 'Tickets <tickets@example.com>',
+    to: 'student@example.com',
+    subject: 'Test ticket',
+    attachments: [{ filename: 'ticket.pdf', content: Buffer.from('%PDF-test') }]
+  }, {
+    relayUrl: 'https://relay.example.com',
+    relaySecret: 'relay-test-secret',
+    fetchImpl: async (url, options) => {
+      relayRequest = { url: String(url), options };
+      return { ok: true, status: 200, json: async () => ({ messageId: 'local-relay-test-id' }) };
+    }
+  });
+  assert.strictEqual(relayRequest.url, 'https://relay.example.com/send');
+  assert.strictEqual(relayRequest.options.headers.Authorization, 'Bearer relay-test-secret');
+  assert.strictEqual(JSON.parse(relayRequest.options.body).attachments[0].content, Buffer.from('%PDF-test').toString('base64'));
+  assert.strictEqual(relayClientResult.messageId, 'local-relay-test-id');
+
+  await assert.rejects(
+    () => sendLocalRelayEmail({}, {
+      relayUrl: 'http://relay.example.com',
+      relaySecret: 'relay-test-secret',
+      fetchImpl: async () => { throw new Error('must not fetch insecure URL'); }
+    }),
+    /must use HTTPS/
+  );
+  console.log('  ✓ Passed: Relay uses HTTPS, authenticates requests, and encodes attachments\n');
+  testsPassed++;
+
+  // --------------------------------------------------------------------------
+  // Criterion 0d: Local relay rejects unauthenticated messages
+  // --------------------------------------------------------------------------
+  console.log('Test 0d: Local SMTP relay rejects unauthenticated messages...');
+  let relayDeliveryCount = 0;
+  const relayApp = createEmailRelayApp({
+    secret: 'relay-test-secret',
+    sendMail: async () => {
+      relayDeliveryCount++;
+      return { messageId: 'relay-server-test-id' };
+    }
+  });
+  const relayServer = await new Promise((resolve) => {
+    const server = relayApp.listen(0, '127.0.0.1', () => resolve(server));
+  });
+  try {
+    const relayAddress = `http://127.0.0.1:${relayServer.address().port}`;
+    const unauthorized = await fetch(`${relayAddress}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'a@example.com', to: 'b@example.com', subject: 'test' })
+    });
+    assert.strictEqual(unauthorized.status, 401);
+    assert.strictEqual(relayDeliveryCount, 0);
+
+    const authorized = await fetch(`${relayAddress}/send`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer relay-test-secret',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'Tickets <tickets@example.com>',
+        to: 'student@example.com',
+        subject: 'Test ticket',
+        attachments: [{ filename: 'ticket.pdf', content: Buffer.from('%PDF-test').toString('base64') }]
+      })
+    });
+    assert.strictEqual(authorized.status, 200);
+    assert.strictEqual(relayDeliveryCount, 1);
+    console.log('  ✓ Passed: Unauthorized requests blocked; authenticated requests accepted\n');
+    testsPassed++;
+  } finally {
+    await new Promise((resolve, reject) => relayServer.close((err) => err ? reject(err) : resolve()));
+  }
   // --------------------------------------------------------------------------
   // Criterion 1: A new Google Forms submission generates exactly one ticket
   // --------------------------------------------------------------------------
@@ -164,14 +251,16 @@ async function runTestSuite() {
   // --------------------------------------------------------------------------
   console.log('Test 5: Ticket is emailed to the correct recipient...');
   const previousProvider = process.env.EMAIL_PROVIDER;
-  const previousApiKey = process.env.RESEND_API_KEY;
+  const previousRelayUrl = process.env.EMAIL_RELAY_URL;
+  const previousRelaySecret = process.env.EMAIL_RELAY_SECRET;
   const originalFetch = global.fetch;
   let ticketEmailRequest;
-  process.env.EMAIL_PROVIDER = 'resend';
-  process.env.RESEND_API_KEY = 're_test_key';
+  process.env.EMAIL_PROVIDER = 'local_relay';
+  process.env.EMAIL_RELAY_URL = 'https://relay.example.com';
+  process.env.EMAIL_RELAY_SECRET = 'relay-test-secret';
   global.fetch = async (url, options) => {
     ticketEmailRequest = { url, options };
-    return { ok: true, status: 200, json: async () => ({ id: 'resend-ticket-id' }) };
+    return { ok: true, status: 200, json: async () => ({ messageId: 'local-relay-ticket-id' }) };
   };
   let emailRes;
   try {
@@ -180,12 +269,15 @@ async function runTestSuite() {
     global.fetch = originalFetch;
     if (previousProvider === undefined) delete process.env.EMAIL_PROVIDER;
     else process.env.EMAIL_PROVIDER = previousProvider;
-    if (previousApiKey === undefined) delete process.env.RESEND_API_KEY;
-    else process.env.RESEND_API_KEY = previousApiKey;
+    if (previousRelayUrl === undefined) delete process.env.EMAIL_RELAY_URL;
+    else process.env.EMAIL_RELAY_URL = previousRelayUrl;
+    if (previousRelaySecret === undefined) delete process.env.EMAIL_RELAY_SECRET;
+    else process.env.EMAIL_RELAY_SECRET = previousRelaySecret;
   }
   assert.strictEqual(emailRes.success, true);
   assert.strictEqual(emailRes.email, 'vjosa.test@student.uni-pr.edu');
-  assert.strictEqual(ticketEmailRequest.url, 'https://api.resend.com/emails');
+  assert.strictEqual(String(ticketEmailRequest.url), 'https://relay.example.com/send');
+  assert.strictEqual(ticketEmailRequest.options.headers.Authorization, 'Bearer relay-test-secret');
   assert.strictEqual(JSON.parse(ticketEmailRequest.options.body).attachments[0].filename, `Bileta-Zyrtare-${savedReg1.ticket_number}.pdf`);
   const updatedEmailReg = queryOne('SELECT email_status, email_sent_at FROM registrations WHERE id = ?', [savedReg1.id]);
   assert.strictEqual(updatedEmailReg.email_status, 'sent');

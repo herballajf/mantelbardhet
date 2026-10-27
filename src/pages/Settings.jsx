@@ -187,6 +187,7 @@ export function Settings() {
           >
             <option value="smtp">SMTP</option>
             <option value="resend">Resend API (HTTPS)</option>
+            <option value="local_relay">SMTP nga laptopi im (lokal)</option>
           </select>
         </div>
 
@@ -220,6 +221,27 @@ export function Settings() {
                   Domeni i kësaj adrese duhet të verifikohet në Resend para dërgimit.
                 </p>
               </div>
+            </div>
+          ) : settings.email_provider === 'local_relay' ? (
+            <div className="md:col-span-2 space-y-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                Aplikacioni në Render do t'ia dërgojë emailin laptopit përmes një lidhjeje HTTPS të sigurt.
+                Laptopi dhe relay-i duhet të jenë të ndezur e të lidhur në internet gjatë dërgimit.
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Adresa dërguese</label>
+                <input
+                  type="text"
+                  value={settings.smtp_from || ''}
+                  onChange={(e) => setSettings({ ...settings, smtp_from: e.target.value })}
+                  placeholder="adresa e konfiguruar në SMTP"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#0B1E36]"
+                />
+              </div>
+              <p className="text-slate-600">
+                SMTP hosti dhe kredencialet vendosen vetëm në skedarin lokal <code>.env</code> të laptopit;
+                URL-ja e tunelit dhe sekreti vendosen si variabla mjedisi në Render.
+              </p>
             </div>
           ) : (
             <>
@@ -292,7 +314,13 @@ export function Settings() {
       <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-2xs space-y-4 text-xs">
         <h4 className="text-sm font-bold text-[#0B1E36]">Testo Dërgimin e Emailit</h4>
         <p className="text-slate-500">
-          Dërgoni një email testues në adresën tuaj për të verifikuar konfigurimin e {settings.email_provider === 'resend' ? 'Resend API' : 'SMTP'}
+          Dërgoni një email testues në adresën tuaj për të verifikuar konfigurimin e {
+            settings.email_provider === 'resend'
+              ? 'Resend API'
+              : settings.email_provider === 'local_relay'
+                ? 'SMTP relay lokal'
+                : 'SMTP'
+          }
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3">

@@ -69,6 +69,50 @@ async function sendResendEmail(mailOptions, apiKey, fetchImpl = fetch) {
   return { messageId: result.id };
 }
 
+async function sendLocalRelayEmail(mailOptions, {
+  relayUrl = process.env.EMAIL_RELAY_URL,
+  relaySecret = process.env.EMAIL_RELAY_SECRET,
+  fetchImpl = fetch
+} = {}) {
+  if (!relayUrl || !relaySecret) {
+    throw new Error('Local email relay is not configured on the application server.');
+  }
+
+  const endpoint = new URL('/send', relayUrl);
+  if (endpoint.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(endpoint.hostname)) {
+    throw new Error('Local email relay URL must use HTTPS.');
+  }
+
+  const response = await fetchImpl(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${relaySecret}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+      attachments: (mailOptions.attachments || []).map((attachment) => ({
+        filename: attachment.filename,
+        content: Buffer.isBuffer(attachment.content)
+          ? attachment.content.toString('base64')
+          : attachment.content
+      }))
+    }),
+    signal: AbortSignal.timeout(20000)
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Local email relay: ${result.error || `HTTP ${response.status}`}`);
+  }
+
+  return { messageId: result.messageId };
+}
+
 // Build SMTP Transporter
 async function getTransporter() {
   const host = process.env.SMTP_HOST || queryOne("SELECT value FROM system_settings WHERE key = 'smtp_host'")?.value;
@@ -309,6 +353,8 @@ async function sendTicketEmail(registrationId, options = {}) {
         throw new Error('Çelësi Resend API mungon. Vendoseni te cilësimet e emailit.');
       }
       info = await sendResendEmail(mailOptions, resendApiKey);
+    } else if (provider === 'local_relay') {
+      info = await sendLocalRelayEmail(mailOptions);
     } else {
       const transporter = await getTransporter();
       info = await transporter.sendMail(mailOptions);
@@ -371,6 +417,7 @@ module.exports = {
   getTransporter,
   createTransporterInstance,
   sendResendEmail,
+  sendLocalRelayEmail,
   sendTicketEmail,
   retryFailedEmails,
   buildHtmlEmail,

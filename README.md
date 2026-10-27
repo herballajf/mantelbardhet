@@ -61,6 +61,18 @@ Nëse hosti i aplikacionit bllokon lidhjet SMTP dalëse, mund të përdorni [Res
 
 API key mund të vendoset edhe si `RESEND_API_KEY` dhe `EMAIL_PROVIDER=resend` në mjedisin e serverit. Mos e ruani API key në Git.
 
+### Dërgimi përmes SMTP-së së laptopit (Render)
+
+Render Free bllokon portet SMTP `25`, `465` dhe `587`. Nëse doni të përdorni kredencialet tuaja SMTP dhe ta lini aplikacionin në Render, mund të nisni një relay të vogël SMTP në laptop dhe ta ekspozoni me një tunel HTTPS. Laptopi duhet të jetë i ndezur dhe online gjatë dërgimit.
+
+1. Në `.env` lokal të laptopit vendosni `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, dhe `EMAIL_RELAY_SECRET`. Sekreti duhet të jetë i gjatë e rastësor; përdorni të njëjtin sekret në Render. Mos i vendosni kredencialet SMTP në Render.
+2. Nisni relay-in lokalisht me `npm run email-relay`. Ai dëgjon vetëm në `127.0.0.1:3100`.
+3. Hapni tunel HTTPS drejt relay-it, për shembull me Cloudflare Tunnel: `cloudflared tunnel --url http://localhost:3100`. Kopjoni URL-në HTTPS që ju jep komanda.
+4. Në Render vendosni `EMAIL_PROVIDER=local_relay`, `EMAIL_RELAY_URL` në URL-në HTTPS të tunelit, dhe `EMAIL_RELAY_SECRET` në sekretin e njëjtë.
+5. Në panel zgjidhni **SMTP nga laptopi im (lokal)**, ruani, dhe dërgoni email testues.
+
+Mos e ndani URL-në e tunelit bashkë me sekretin. Tuneli Quick Tunnel mund të japë URL të re pas ristartimit; në atë rast përditësoni `EMAIL_RELAY_URL` në Render. Ruani kredencialet SMTP në `.env` dhe mos e bëni commit atë skedar.
+
 ---
 
 ## 🔐 Kredencialet e Paracaktuara të Qasjes
