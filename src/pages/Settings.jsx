@@ -127,6 +127,17 @@ export function Settings() {
     }
   };
 
+  const handleClearSampleData = async () => {
+    if (!window.confirm('A jeni të sigurt që dëshironi të fshini të gjitha regjistrimet testuese? Baza do të mbetet me 0 regjistrime, gati për studentët e vërtetë.')) return;
+    try {
+      const res = await api.post('/settings/clear-sample-data', {});
+      alert(res.message);
+      window.location.reload();
+    } catch (err) {
+      alert(`Gabim: ${err.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
@@ -334,15 +345,24 @@ export function Settings() {
         </div>
       </div>
 
-      {/* Database Backup Info */}
-      <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 text-xs text-slate-600 space-y-2">
-        <div className="flex items-center gap-2 text-[#0B1E36] font-bold">
-          <Database className="w-4 h-4" />
-          <span>Informacion për Bazën e të Dhënave & Backup</span>
+      {/* Database Backup & Clean Slate Info */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-5 text-xs text-slate-600 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[#0B1E36] font-bold">
+            <Database className="w-4 h-4" />
+            <span>Fillim me të Dhëna Reale (Clean Slate)</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearSampleData}
+            className="px-3 py-1.5 font-bold text-rose-700 bg-white hover:bg-rose-50 border border-rose-300 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+            <span>Fshij të Gjitha Regjistrimet Provë</span>
+          </button>
         </div>
         <p className="leading-relaxed">
-          Baza e të dhënave ruhet në skedarin <code>data.sqlite</code> me modalitetin WAL (Write-Ahead Logging). 
-          Për të kryer backup të sigurt gjatë kohës që sistemi po punon, mjafton të kopjoni skedarin <code>data.sqlite</code> në hapësirën tuaj të sigurt rezervë.
+          Kliko butonin e kuq më lart nëse dëshiron të heqësh të gjithë pjesëmarrësit mostër dhe të fillosh nga 0 me studentët e vërtetë që regjistrohen në Google Forms.
         </p>
       </div>
 

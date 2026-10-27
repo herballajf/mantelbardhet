@@ -174,6 +174,25 @@ router.post('/retention/purge', authenticate, requireAdmin, (req, res) => {
   });
 });
 
+// POST /api/settings/clear-sample-data (Wipe test registrations for a 100% clean production start)
+router.post('/clear-sample-data', authenticate, requireAdmin, (req, res) => {
+  execute('DELETE FROM registrations');
+  execute('DELETE FROM sync_logs');
+
+  logAudit({
+    userId: req.user.id,
+    action: 'CLEAR_SAMPLE_DATA',
+    entityType: 'registrations',
+    details: 'Pastroi të gjitha regjistrimet dhe logjet testuese',
+    ipAddress: req.ip
+  });
+
+  res.json({
+    success: true,
+    message: 'Të gjitha të dhënat testuese u fshinë me sukses. Baza tani është e pastër për regjistrime reale!'
+  });
+});
+
 // GET /api/audit-logs
 router.get('/audit-logs', authenticate, requireAdmin, (req, res) => {
   const logs = getRecentAuditLogs(100);
